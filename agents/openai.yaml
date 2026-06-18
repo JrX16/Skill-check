@@ -1,0 +1,7 @@
+interface:
+  display_name: "Skill Check"
+  short_description: "Audit AI skills for malware, backdoors, prompt injection, and unsafe bundled code."
+  default_prompt: "Use $skill-check to audit this skill folder for malicious code, unsafe instructions, and suspicious dependencies."
+
+policy:
+  allow_implicit_invocation: true

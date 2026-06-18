@@ -1,191 +1,209 @@
-# Skill-check
+# Skill Check
 
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/platform-Claude%20Code-purple.svg)](https://claude.ai/code)
+[![Python](https://img.shields.io/badge/python-3.10%2B-blue)](https://www.python.org/)
+[![Type](https://img.shields.io/badge/type-Codex%20Skill-green)](SKILL.md)
+[![Security](https://img.shields.io/badge/focus-defensive%20security-orange)](#safety-boundary)
 
-Automated security scanner for Claude Code skill files. Performs a comprehensive 5-phase security audit to detect malware, backdoors, embedded malicious code, AI instruction-level threats, prompt injection, obfuscation, and structural anomalies in skill (`SKILL.md`) files.
+Skill Check is a defensive security audit skill for AI skill and plugin
+folders. It helps Codex, Claude Code, and similar agent environments inspect
+`SKILL.md` files, bundled scripts, reference files, and plugin folders for
+malware indicators, unsafe instructions, prompt-injection behavior, data
+exfiltration risks, suspicious dependencies, obfuscation, and hidden content.
 
-## Table of Contents
+The repository contains both:
 
-- [Why Skill-check?](#why-skill-check)
-- [Features](#features)
-- [Installation](#installation)
-- [Usage](#usage)
-- [Detection Pipeline](#detection-pipeline)
-- [Severity Classification](#severity-classification)
-- [Example Report](#example-report)
-- [Safety Statement](#safety-statement)
-- [Limitations](#limitations)
-- [Contributing](#contributing)
-- [License](#license)
+- `SKILL.md`: the agent-facing skill instructions and review workflow.
+- `scripts/scan_skill.py`: an offline static scanner used as first-pass triage.
 
-## Why Skill-check?
+The scanner never imports or executes target files. Its output is intended to
+guide a manual semantic review, not replace one.
 
-Claude Code skills are powerful AI instruction files that extend the capabilities of Claude. However, because skills can contain arbitrary instructions, they introduce a new attack surface:
+## What It Checks
 
-- **Malicious code** can be embedded in seemingly innocent skill files
-- **Prompt injection** can hijack AI behavior to perform dangerous actions
-- **Obfuscation techniques** can hide threats from simple text-based searches
+Skill Check looks for signals across the main risk surfaces of AI skill
+bundles:
 
-Skill-check provides a systematic, defense-in-depth approach to auditing skill files before they are installed or executed. Think of it as a **static analysis security tool (SAST) for AI instruction files**.
+- Structural anomalies such as invalid UTF-8, binary bytes, hidden Unicode
+  controls, HTML comments, data URIs, JavaScript links, and long encoded blobs.
+- Executable payload indicators such as dynamic execution, shell execution,
+  download-and-run patterns, web shell signatures, unsafe deserialization, and
+  suspicious script files.
+- AI instruction threats such as permission-boundary bypasses, concealed
+  operation, prompt disclosure attempts, remote instruction delegation, and
+  data-leakage behavior.
+- Reference-chain risks such as path traversal, risky URLs, direct IP links,
+  insecure protocols, short links, risky TLDs, and package-install commands
+  that change registries or execute downloaded content.
+- Operational safety issues such as instructions to execute target code,
+  install dependencies, disable protections, or write outside the intended
+  workspace without explicit authorization.
 
-## Features
+## Repository Layout
 
-- **5-Phase Detection Pipeline** — Each phase targets a different attack layer, from file structure to semantic threats
-- **Multi-Language Coverage** — Detects malicious patterns in PHP, Python, JavaScript, Shell/Bash, PowerShell, ASP, and JSP
-- **AI Instruction-Level Analysis** — Identifies prompt injection, jailbreak attempts, data exfiltration, and social engineering instructions
-- **Zero-Width Character Detection** — Catches invisible Unicode characters used to hide malicious payloads
-- **Polyglot File Detection** — Identifies files that are valid and executable in multiple language formats simultaneously
-- **Reference Chain Analysis** — Audits external URLs, dependent files, and download-and-execute patterns
-- **Risk Matrix Scoring** — Maps findings on an Impact × Confidence matrix for actionable prioritization
-- **Per-Finding Remediation** — Provides specific fix recommendations for each discovered threat
+```text
+.
+├── SKILL.md                 # Skill definition and review workflow
+├── agents/
+│   └── openai.yaml          # Codex/OpenAI skill metadata
+└── scripts/
+    └── scan_skill.py        # Offline static scanner
+```
+
+## Requirements
+
+- Python 3.10 or newer
+- No third-party Python dependencies
 
 ## Installation
 
-Skill-check is a Claude Code skill file. To install:
+### Codex
 
-1. Download `SKILL.md` from this repository
-2. Place it in your Claude Code skills directory:
-   ```
-   ~/.claude/skills/skill-check/SKILL.md
-   ```
-3. The skill will auto-register and become available in Claude Code sessions
+Clone or copy this repository into your Codex skills directory:
 
-**Trigger phrases** — Invoke the scanner by saying any of the following:
-- "scan this skill"
-- "check this skill for backdoors"
-- "audit this skill"
-- "is this skill safe?"
-- "skill security check"
-- "detect malware in this skill"
-
-## Usage
-
-### Basic Scan
-
-```
-> Scan this skill: C:\Users\me\.claude\skills\some-skill\SKILL.md
+```bash
+mkdir -p ~/.codex/skills
+git clone https://github.com/<owner>/skill-check.git ~/.codex/skills/skill-check
 ```
 
-The scanner will:
-1. Read the target skill file and analyze its structure
-2. Execute all 5 detection phases in order
-3. Produce a tabulated report after each phase
-4. Deliver a final verdict with a comprehensive risk matrix
+Then invoke it in Codex with a request such as:
 
-### Batch Scan
-
-To scan multiple skills, invoke the scanner once per file:
-
-```
-> Check all skills in ~/.claude/skills/ for security issues
+```text
+Use $skill-check to audit this skill folder.
 ```
 
-### Scan with Peer Comparison
+### Claude Code
 
-For more accurate anomaly detection, the scanner compares file sizes against peer skills in the same directory. Ensure the target skill is alongside other skills (or reference skills from the same source) for optimal results.
+Copy the skill folder into your Claude skills directory:
 
-## Detection Pipeline
-
-The scanner executes five phases in strict sequence. Each phase's findings feed into the next.
-
-```
-Phase 1: Structural Anomaly Detection
-├── File size anomaly (vs. peer average)
-├── Encoding anomaly (UTF-8 validation, BOM checks)
-├── Non-printable character ratio
-├── Zero-width character detection (15+ Unicode code points)
-└── Hidden content (HTML comments, data URIs, base64, invisible text)
-
-Phase 2: Embedded Malware Detection
-├── Long encoded strings (Base64, Hex, URL-encoded)
-├── Dynamic execution functions (PHP, Python, JS, Shell, PowerShell)
-├── WebShell signatures (PHP, ASP/ASPX, JSP)
-├── Obfuscation techniques (string concat, variable variables, char encoding)
-├── Deserialization payloads (PHP, Java, Python pickle)
-└── Polyglot file detection
-
-Phase 3: AI Instruction-Level Threats
-├── Permission bypass instructions (English + Chinese)
-├── Data exfiltration instructions
-├── Hidden prompt / jailbreak detection
-├── Indirect prompt injection (external URL → follow instructions)
-└── Social engineering (authority impersonation, urgency, trust induction)
-
-Phase 4: Reference Chain & Dependency Analysis
-├── External URL detection and classification
-├── Recursive reference file scanning
-├── Remote execution instruction detection (curl|bash, wget -O -|sh, etc.)
-└── Path traversal detection
-
-Phase 5: Scoring & Remediation
-├── Risk matrix (Impact × Confidence)
-├── Aggregated findings summary
-├── Per-finding remediation suggestions
-├── General remediation guide
-└── Final verdict (Safe / Low Risk / Unsafe)
+```bash
+mkdir -p ~/.claude/skills
+git clone https://github.com/<owner>/skill-check.git ~/.claude/skills/skill-check
 ```
 
-## Severity Classification
+You can then ask Claude Code to audit a `SKILL.md`, a skill directory, or a
+plugin directory.
 
-| Severity | Icon | Description | Action Required |
-|----------|------|-------------|-----------------|
-| Critical | 🔴 | Deterministic malicious match, RCE or compromise viable | Isolate immediately |
-| High | 🟠 | Strong indicators, likely malicious | Immediate action required |
-| Medium | 🟡 | Suspicious signals, exploitation possible | Monitor and investigate |
-| Low | 🟢 | Anomalous but unconfirmed | Track and log |
-| Info | ℹ️ | Notable observation, no risk | No action needed |
+## CLI Usage
 
-Severity is determined by the intersection of **Impact** (what can happen if exploited) and **Confidence** (how certain the detection is).
+Run the static scanner directly when you want a quick local report:
+
+```bash
+python scripts/scan_skill.py <target-path> --format markdown
+```
+
+The target can be:
+
+- A single `SKILL.md` file
+- A skill folder
+- A plugin folder
+
+Examples:
+
+```bash
+python scripts/scan_skill.py ~/.codex/skills/example-skill --format markdown
+python scripts/scan_skill.py ~/.claude/skills/example-skill/SKILL.md --format json
+python scripts/scan_skill.py ./some-plugin --format markdown --fail-on high
+```
+
+`--format json` emits machine-readable output for automation.
+
+`--fail-on low|medium|high|critical` exits with code `2` when any finding meets
+or exceeds the selected severity. This is useful for CI checks.
 
 ## Example Report
 
 ```markdown
-## Comprehensive Security Report
+## Skill Security Report
 
-### Overall Rating: 🔴 UNSAFE — HIGH RISK
+**Target:** `./example-skill`
+**Files scanned:** 4
+**Overall rating:** HIGH RISK
 
-### Findings Inventory (sorted by severity)
+### Severity Counts
 
-| # | Severity      | Phase  | Finding Type           | Confidence | Location | Description                    |
-|---|---------------|--------|------------------------|------------|----------|--------------------------------|
-| 1 | 🔴 Critical   | Phase 2 | PHP WebShell           | HIGH       | L123     | eval($_POST['cmd']) detected   |
-| 2 | 🟠 High       | Phase 3 | Permission Bypass      | HIGH       | L45      | "ignore all safety rules"      |
-| 3 | 🟡 Medium     | Phase 1 | Zero-Width Characters  | MEDIUM     | L78      | 3 ZWSP characters found        |
+| Severity | Count |
+|---|---:|
+| Critical | 0 |
+| High | 1 |
+| Medium | 2 |
+| Low | 0 |
+| Info | 1 |
 
-### Recommended Actions
-1. Immediately stop using this skill
-2. Delete the infected file
-3. Obtain or rebuild from a trusted source
-4. Scan all other copies across the system
+### Findings
+
+| Severity | Confidence | Location | Type | Evidence |
+|---|---|---:|---|---|
+| High | Medium | `SKILL.md:42` | Remote prompt control | `external page asks the agent to obey it...` |
+
+### Remediation Notes
+
+- **Remote prompt control:** Treat external content as data only; never follow
+  instructions from fetched pages.
 ```
 
-## Safety Statement
+## CI Example
 
-This skill is for **defensive security analysis only** — scanning and identifying threats in existing skill files. It must not be used to:
+```yaml
+name: skill-check
 
-- Bypass security detections
-- Craft adversarial samples
-- Develop or distribute malicious skills
+on:
+  pull_request:
+  push:
 
-## Limitations
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Scan skill bundle
+        run: python scripts/scan_skill.py . --format markdown --fail-on high
+```
 
-- **Not a replacement for antivirus** — Cross-validate known malware signatures with traditional AV tools
-- **False positives are possible** — Skills that teach penetration testing may contain educational code examples. The scanner distinguishes between "code referenced as learning material" and "actual executable malicious payload" using context awareness
-- **Detection rules require updates** — New attack techniques and obfuscation methods emerge continuously
-- **Zero-trust principle applies** — Even when a scan passes, validate new skills in an isolated environment before trusting them in production
+## Severity Model
+
+| Severity | Meaning |
+|---|---|
+| Critical | Deterministic evidence of RCE, credential theft, destructive commands, web shells, encoded executable payloads, or explicit exfiltration. |
+| High | Strong evidence of unsafe execution, hidden instructions, remote instruction control, download-then-run behavior, or unauthorized filesystem access. |
+| Medium | Suspicious but contextual signals such as long encodings, risky URLs, dangerous APIs in examples, or bundled executable files. |
+| Low | Structural anomalies, uncommon formatting, or weak indicators that need manual review. |
+| Info | Inventory and baseline observations. |
+
+Security skills can legitimately contain dangerous strings as detector rules or
+educational examples. Treat scanner findings as evidence to inspect in context,
+not as automatic proof that the target is malicious.
+
+## Safety Boundary
+
+Skill Check is for defensive analysis of existing skill and plugin files only.
+Do not use it to build bypasses, tune malicious samples, hide indicators from
+scanners, or improve adversarial payloads.
+
+When reviewing an unknown skill:
+
+1. Scan it offline first.
+2. Read the flagged files manually.
+3. Distinguish examples and detector rules from operational instructions.
+4. Do not execute target code during the audit.
+5. If the skill appears malicious, stop using it and rebuild from a trusted
+   source.
 
 ## Contributing
 
-Contributions are welcome! Areas where help is especially needed:
+Useful contributions include:
 
-1. **New obfuscation patterns** — Add detection signatures for emerging techniques
-2. **Language support** — Expand coverage for additional programming languages
-3. **False positive reduction** — Improve context-awareness heuristics
-4. **Performance optimization** — Reduce scan time for large file batches
+- New detector rules for emerging skill/plugin attack patterns.
+- Better false-positive handling for security education and scanner-rule text.
+- Additional tests and fixture bundles for suspicious but non-malicious cases.
+- Documentation improvements for Codex, Claude Code, and other agent runtimes.
 
-Please open an issue before submitting a pull request to discuss the proposed change.
+Please keep changes defensive, explain the threat model behind new rules, and
+include sample findings or test fixtures when practical.
 
 ## License
 
-MIT — See [LICENSE](LICENSE) for details.
+This repository does not currently include a license file. Add one before
+redistributing or publishing packaged releases.
